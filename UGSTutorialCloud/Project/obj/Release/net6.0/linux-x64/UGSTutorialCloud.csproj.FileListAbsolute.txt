@@ -1,0 +1,13 @@
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\bin\Release\net6.0\linux-x64\UGSTutorialCloud.deps.json
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\bin\Release\net6.0\linux-x64\UGSTutorialCloud.dll
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\bin\Release\net6.0\linux-x64\UGSTutorialCloud.pdb
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Release\net6.0\linux-x64\UGSTutorialCloud.csproj.AssemblyReference.cache
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Release\net6.0\linux-x64\UGSTutorialCloud.GeneratedMSBuildEditorConfig.editorconfig
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Release\net6.0\linux-x64\UGSTutorialCloud.AssemblyInfoInputs.cache
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Release\net6.0\linux-x64\UGSTutorialCloud.AssemblyInfo.cs
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Release\net6.0\linux-x64\UGSTutorialCloud.csproj.CoreCompileInputs.cache
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Release\net6.0\linux-x64\UGSTutorialCloud.sourcelink.json
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Release\net6.0\linux-x64\UGSTutorialCloud.dll
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Release\net6.0\linux-x64\refint\UGSTutorialCloud.dll
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Release\net6.0\linux-x64\UGSTutorialCloud.pdb
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Release\net6.0\linux-x64\ref\UGSTutorialCloud.dll

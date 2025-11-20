@@ -1,0 +1,13 @@
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\UGSTutorialCloud.dll
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\UGSTutorialCloud.deps.json
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\UGSTutorialCloud.pdb
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\Unity.Services.CloudCode.Apis.dll
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\Unity.Services.CloudCode.Core.dll
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\Google.Protobuf.dll
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\Grpc.Core.Api.dll
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\Grpc.Net.Client.dll
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\Grpc.Net.Common.dll
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\JsonSubTypes.dll
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\Microsoft.Extensions.DependencyInjection.Abstractions.dll
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\Microsoft.Extensions.Logging.Abstractions.dll
+C:\Users\nikma\AppData\Local\Temp\UGSTutorialCloud\module-compilation\Newtonsoft.Json.dll

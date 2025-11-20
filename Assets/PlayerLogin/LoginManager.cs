@@ -13,16 +13,22 @@ namespace PlayerLogin
     /// </summary>
     public class LoginManager : MonoBehaviour
     {
-        private async void Awake()
+        public Action PlayerSignedIn;
+        private void Awake()
         {
             InitializeFacebook();
-            // Verifica se os servicos da Unity ja foram inicializados
-            if (UnityServices.State == ServicesInitializationState.Uninitialized)
+            if (UnityServices.State == ServicesInitializationState.Initialized)
             {
-                Debug.Log("Inicializando Servicos...");
-                await UnityServices.InitializeAsync();
+                UnitySignInSubscription();
             }
+            else
+            {
+                UnityServices.Initialized += UnitySignInSubscription;
+            }
+        }
 
+        private void UnitySignInSubscription()
+        {
             // Inscreve o metodo de login/vinculo no evento de assinatura
             PlayerAccountService.Instance.SignedIn += SignInOrLinkWithUnity;
         }
@@ -60,6 +66,7 @@ namespace PlayerLogin
                 // Mostra como obter o PlayerID
                 Debug.Log($"ID do Jogador: {AuthenticationService.Instance.PlayerId}");
 
+                PlayerSignedIn.Invoke();
             }
             catch (AuthenticationException ex)
             {
@@ -275,6 +282,11 @@ namespace PlayerLogin
             {
                 Debug.LogException(ex);
             }
+        }
+        private void OnDestroy()
+        {
+            PlayerAccountService.Instance.SignedIn -= SignInOrLinkWithUnity;
+            UnityServices.Initialized -= UnitySignInSubscription;
         }
     }
 }

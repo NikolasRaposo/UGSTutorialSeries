@@ -5,6 +5,9 @@
         maven {
             url "https://maven.google.com"
         }
+        maven {
+            url (unityProjectPath + "/Assets/GeneratedLocalRepo/GooglePlayGames/com.google.play.games/Editor/m2repository") // Assets/GooglePlayGames/com.google.play.games/Editor/GooglePlayGamesPluginDependencies.xml:11
+        }
         mavenLocal()
         jcenter()
         mavenCentral()
@@ -27,13 +30,14 @@ dependencies {
     implementation 'com.facebook.android:facebook-gamingservices:[18.0.0,19)' // Assets/FacebookSDK/Plugins/Editor/Dependencies.xml:9
     implementation 'com.facebook.android:facebook-login:[18.0.0,19)' // Assets/FacebookSDK/Plugins/Editor/Dependencies.xml:7
     implementation 'com.facebook.android:facebook-share:[18.0.0,19)' // Assets/FacebookSDK/Plugins/Editor/Dependencies.xml:8
+    implementation 'com.google.games:gpgs-plugin-support:2.1.0' // Assets/GooglePlayGames/com.google.play.games/Editor/GooglePlayGamesPluginDependencies.xml:11
     implementation 'com.parse.bolts:bolts-android:1.4.0' // Assets/FacebookSDK/Plugins/Editor/Dependencies.xml:4
 // Android Resolver Dependencies End
 **DEPS**}
 
 // Android Resolver Exclusions Start
 android {
-  packaging {
+  packagingOptions {
       exclude ('/lib/armeabi/*' + '*')
       exclude ('/lib/armeabi-v7a/*' + '*')
       exclude ('/lib/mips/*' + '*')
