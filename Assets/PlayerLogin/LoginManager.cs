@@ -1,10 +1,12 @@
+using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Unity.Services.Authentication;
 using Unity.Services.Authentication.PlayerAccounts;
 using Unity.Services.Core;
 using UnityEngine;
-
-namespace PlayerLogin 
+using Facebook.Unity;
+namespace PlayerLogin
 {
     /// <summary>
     /// Gerencia o fluxo de autenticacao do jogador (Anonimo e Unity Player Account).
@@ -13,13 +15,14 @@ namespace PlayerLogin
     {
         private async void Awake()
         {
+            InitializeFacebook();
             // Verifica se os servicos da Unity ja foram inicializados
             if (UnityServices.State == ServicesInitializationState.Uninitialized)
             {
                 Debug.Log("Inicializando Servicos...");
                 await UnityServices.InitializeAsync();
             }
-            
+
             // Inscreve o metodo de login/vinculo no evento de assinatura
             PlayerAccountService.Instance.SignedIn += SignInOrLinkWithUnity;
         }
@@ -53,10 +56,10 @@ namespace PlayerLogin
             {
                 await AuthenticationService.Instance.SignInAnonymouslyAsync();
                 Debug.Log("Login anonimo realizado com sucesso!");
-    
+
                 // Mostra como obter o PlayerID
                 Debug.Log($"ID do Jogador: {AuthenticationService.Instance.PlayerId}");
-    
+
             }
             catch (AuthenticationException ex)
             {
@@ -71,7 +74,7 @@ namespace PlayerLogin
                 Debug.LogException(ex);
             }
         }
-        
+
         /// <summary>
         /// Inicia o fluxo de login com a Unity Player Account.
         /// </summary>
@@ -94,7 +97,7 @@ namespace PlayerLogin
                 Debug.LogException(ex);
             }
         }
-        
+
         /// <summary>
         /// Decide se deve fazer login ou vincular a conta atual com a conta Unity.
         /// </summary>
@@ -136,7 +139,7 @@ namespace PlayerLogin
         {
             return AuthenticationService.Instance.PlayerInfo.GetUnityId() != null;
         }
-        
+
         /// <summary>
         /// Tenta vincular a sessao atual com a conta Unity fornecida.
         /// </summary>
@@ -162,6 +165,114 @@ namespace PlayerLogin
             {
                 // Compare o codigo de erro com CommonErrorCodes
                 // Notifique o jogador com a mensagem de erro adequada
+                Debug.LogException(ex);
+            }
+        }
+        private void InitializeFacebook()
+        {
+            if (!FB.IsInitialized)
+            {
+                // Inicializa o Facebook SDK
+                FB.Init(InitCallback, OnHideUnity);
+            }
+            else
+            {
+                // Ja inicializado, envia um evento de aplicativo ativado para o aplicativo
+                FB.ActivateApp();
+            }
+        }
+        void InitCallback()
+        {
+            if (FB.IsInitialized)
+            {
+                Debug.Log($"[DIAGNOSTICO] App ID carregado pelo SDK: '{FB.AppId}'");
+                Debug.Log($"[DIAGNOSTICO] Client Token carregado: '{FB.ClientToken}'");
+
+                FB.ActivateApp();
+            }
+            else
+            {
+                Debug.Log("Falha ao inicializar o Facebook SDK");
+            }
+        }
+        void OnHideUnity(bool isGameShown)
+        {
+            if (!isGameShown)
+            {
+                // Pausa o jogo - vamos precisar esconder
+                Time.timeScale = 0;
+            }
+            else
+            {
+                // Retorna ao jogo - estamos focados novamente
+                Time.timeScale = 1;
+            }
+        }
+        public void StartFacebookSignIn()
+        {
+            var perms = new List<string>() { "public_profile", "email" };
+            FB.LogInWithReadPermissions(perms, async result => {
+                if (FB.IsLoggedIn)
+                {
+                    // A classe AccessToken vai receber os detalhes da sessao
+                    var facebookAccessToken = Facebook.Unity.AccessToken.CurrentAccessToken.TokenString;
+
+                    if (!AuthenticationService.Instance.IsSignedIn)
+                    {
+                        await SignInWithFacebookAsync(facebookAccessToken);
+                    }
+                    else
+                    {
+                        await LinkWithFacebookAsync(facebookAccessToken);
+                    }
+                }
+                else
+                {
+                    Debug.LogError("Login nao completado.");
+    
+                    // Verifica se houve cancelamento pelo usuario
+                    if (result.Cancelled)
+                    {
+                        Debug.LogWarning("O usuario fechou a janela de login ou cancelou a permissao.");
+                    }
+    
+                    // Verifica se houve erro tecnico (App ID errado, sem internet, etc)
+                    if (!string.IsNullOrEmpty(result.Error))
+                    {
+                        Debug.LogError($"Erro retornado pelo Facebook: {result.Error}");
+                    }
+    
+                    // Mostra a resposta crua para analise profunda
+                    Debug.Log($"Resposta Raw: {result.RawResult}");
+                }
+            });
+
+        }
+        private async Task SignInWithFacebookAsync(string accessToken)
+        {
+            try
+            {
+                await AuthenticationService.Instance.SignInWithFacebookAsync(accessToken);
+                Debug.Log("Entrou com o Facebook!");
+            }
+            catch (RequestFailedException ex)
+            {
+                Debug.LogException(ex);
+            }
+        }
+        private async Task LinkWithFacebookAsync(string accessToken)
+        {
+            try
+            {
+                await AuthenticationService.Instance.LinkWithFacebookAsync(accessToken);
+                Debug.Log("Conectado com o Facebook!");
+            }
+            catch (AuthenticationException ex) when (ex.ErrorCode == AuthenticationErrorCodes.AccountAlreadyLinked)
+            {
+                Debug.LogException(ex);
+            }
+            catch (Exception ex)
+            {
                 Debug.LogException(ex);
             }
         }
