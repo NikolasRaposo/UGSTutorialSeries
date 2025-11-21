@@ -10,12 +10,13 @@ namespace PlayerLogin
 {
     public class PlayerDataManager: MonoBehaviour
     {
-        private PlayerDataServiceBindings m_Bindings;
         public LoginManager LoginManager;
+        [SerializeField] private PlayerEconomyManager m_PlayerEconomyManager;
         public string PlayerName;
         public PlayerData PlayerDataLocal;
-        public event Action<PlayerData> PlayerDataUpdated;
+        private PlayerDataServiceBindings m_Bindings;
 
+        public event Action<PlayerData> PlayerDataUpdated;
         void Start()
         {
             LoginManager.PlayerSignedIn += InitializePlayer;
@@ -28,6 +29,9 @@ namespace PlayerLogin
                 var playerDataResponse = await m_Bindings.HandlePlayerSignIn();
                 PlayerDataLocal = playerDataResponse.PlayerData;
                 PlayerDataUpdated?.Invoke(PlayerDataLocal);
+                
+                m_PlayerEconomyManager.HandleEconomyUpdate(playerDataResponse.EconomyData);
+                
                 LogResponse(playerDataResponse);
             }
             

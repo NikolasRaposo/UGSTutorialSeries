@@ -286,5 +286,81 @@ public class PlayerEconomyService
         await AddNewInventoryItem(context, gameApiClient, itemId, instanceData);
     }
 
-    
+
+    public async Task CleanUpNullOrZeroAmountItems(IExecutionContext context, IGameApiClient gameApiClient, string itemKey)
+    {
+        try
+        {
+            var items = await GetPlayerInventory(context, gameApiClient, inventoryItemIds: new string[] {itemKey});
+            var itemsToDelete = new List<string>();
+            foreach (var item in items)
+            {
+                if (string.IsNullOrEmpty(item.PlayersInventoryItemId)) continue;
+                if (item.InstanceData == null)
+                {
+                    itemsToDelete.Add(item.PlayersInventoryItemId);
+                    m_Logger.LogInformation($"Found {itemKey} with null instance data: {item.PlayersInventoryItemId}");
+                    continue;
+                }
+                if (!TryParseInventoryItemAmount(item, out int amount))
+                {
+                    continue;
+                }
+                if (amount <= 0)
+                {
+                    itemsToDelete.Add(item.PlayersInventoryItemId);
+                }
+            }
+            foreach (var itemId in itemsToDelete)
+            {
+                await DeleteInventoryItem(context, gameApiClient, itemId);
+                m_Logger.LogInformation($"Deletado quantidade-zero {itemId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            m_Logger.LogError(ex, $"Falha em limpar quantidade-zero {itemKey} para o jogador '{context.PlayerId}'");
+        }
+    }
+    private async Task DeleteInventoryItem(IExecutionContext context, IGameApiClient gameApiClient, string inventoryItemId)
+    {
+        await gameApiClient.EconomyInventory.DeleteInventoryItemAsync(
+            context,
+            context.AccessToken,
+            context.ProjectId,
+            context.PlayerId ?? throw new InvalidOperationException("PlayerId is null"),
+            inventoryItemId);
+    }
+    public async Task AddOrUpdateInventoryItemAmount(IExecutionContext context, IGameApiClient gameApiClient, string itemKey, int amountToAdd, Dictionary<string, object>? customData = null)
+    {
+        var inventoryItems = await GetPlayerInventory(context, gameApiClient, inventoryItemIds: new string[] { itemKey });
+        InventoryResponse? existingItem = inventoryItems.FirstOrDefault(item => !string.IsNullOrEmpty(item.PlayersInventoryItemId));
+        bool itemExistsInInventory = existingItem != null;
+        int totalAmount = amountToAdd;
+        if (itemExistsInInventory)
+        {
+            TryParseInventoryItemAmount(existingItem!, out int currentAmount);
+            totalAmount = currentAmount + amountToAdd;
+        }
+
+        var instanceData = new Dictionary<string, object> {
+            { "amount", totalAmount }
+        };
+        if (customData != null)
+        {
+            foreach (var kvp in customData)
+            {
+                instanceData[kvp.Key] = kvp.Value;
+            }
+        }
+        if (itemExistsInInventory)
+        {
+            var updateRequest = new InventoryRequestUpdate(instanceData: instanceData);
+            await gameApiClient.EconomyInventory.UpdateInventoryItemAsync(context, context.AccessToken, context.ProjectId, context.PlayerId!, existingItem!.PlayersInventoryItemId!, updateRequest);
+        }
+        else
+        {
+            await AddNewInventoryItem(context, gameApiClient, itemKey, instanceData);
+        }
+    }
 }
