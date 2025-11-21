@@ -261,6 +261,7 @@ namespace PlayerLogin
             {
                 await AuthenticationService.Instance.SignInWithFacebookAsync(accessToken);
                 Debug.Log("Entrou com o Facebook!");
+                PlayerSignedIn.Invoke();
             }
             catch (RequestFailedException ex)
             {

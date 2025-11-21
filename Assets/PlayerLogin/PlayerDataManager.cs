@@ -1,8 +1,10 @@
 using System;
 using System.Linq;
+using Newtonsoft.Json;
 using UnityEngine;
 using Unity.Services.CloudCode;
 using Unity.Services.CloudCode.GeneratedBindings;
+using Unity.Services.CloudCode.GeneratedBindings.UGSTutorialCloud;
 
 namespace PlayerLogin
 {
@@ -11,6 +13,8 @@ namespace PlayerLogin
         private PlayerDataServiceBindings m_Bindings;
         public LoginManager LoginManager;
         public string PlayerName;
+        public PlayerData PlayerDataLocal;
+        public event Action<PlayerData> PlayerDataUpdated;
 
         void Start()
         {
@@ -21,14 +25,30 @@ namespace PlayerLogin
         {
             try
             {
-                var resultFromCloud = await m_Bindings.SayHello(PlayerName);
-                Debug.Log($"{resultFromCloud}");
+                var playerDataResponse = await m_Bindings.HandlePlayerSignIn();
+                PlayerDataLocal = playerDataResponse.PlayerData;
+                PlayerDataUpdated?.Invoke(PlayerDataLocal);
+                LogResponse(playerDataResponse);
             }
             
             catch (CloudCodeException ex)
             {
                 Debug.LogException(ex);
             }
+        }
+
+        private void LogResponse(PlayerDataResponse response)
+        {
+            string economyJson = JsonConvert.SerializeObject(response.EconomyData, Formatting.Indented);
+            
+            Debug.Log(
+                $"===== Jogador Inscrito Resposta =====\n" +
+                $"Nome: {response.PlayerData.DisplayName}\n" +
+                $"Novo Jogador: {response.IsNewPlayer}\n" +
+                $"XP: {response.PlayerData.Experience}\n" +
+                $"Economia: {economyJson}\n" +
+                $"===================================="
+                );
         }
 
         public async void SaveNewPlayerName()

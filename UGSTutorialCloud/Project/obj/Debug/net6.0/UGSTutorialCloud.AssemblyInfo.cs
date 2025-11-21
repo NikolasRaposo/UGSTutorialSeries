@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("UGSTutorialCloud")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+45b655d660d4c18a0f6463b28c784b8cb76d6ef3")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0097739462f03a569ebc44f441db470f6f61d847")]
 [assembly: System.Reflection.AssemblyProductAttribute("UGSTutorialCloud")]
 [assembly: System.Reflection.AssemblyTitleAttribute("UGSTutorialCloud")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

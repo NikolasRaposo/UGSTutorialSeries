@@ -1,0 +1,13 @@
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\bin\Debug\net6.0\UGSTutorialCloud.deps.json
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\bin\Debug\net6.0\UGSTutorialCloud.dll
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\bin\Debug\net6.0\UGSTutorialCloud.pdb
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Debug\net6.0\UGSTutorialCloud.csproj.AssemblyReference.cache
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Debug\net6.0\UGSTutorialCloud.GeneratedMSBuildEditorConfig.editorconfig
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Debug\net6.0\UGSTutorialCloud.AssemblyInfoInputs.cache
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Debug\net6.0\UGSTutorialCloud.AssemblyInfo.cs
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Debug\net6.0\UGSTutorialCloud.csproj.CoreCompileInputs.cache
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Debug\net6.0\UGSTutorialCloud.sourcelink.json
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Debug\net6.0\UGSTutorialCloud.dll
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Debug\net6.0\refint\UGSTutorialCloud.dll
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Debug\net6.0\UGSTutorialCloud.pdb
+C:\Gamedev\Unity Projects\UGSTutorialSeries\UGSTutorialCloud\Project\obj\Debug\net6.0\ref\UGSTutorialCloud.dll
