@@ -335,6 +335,15 @@
       },
       "url": "https://packages.unity.com"
     },
+    "com.unity.services.levelplay": {
+      "version": "9.2.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.services.core": "1.15.1"
+      },
+      "url": "https://packages.unity.com"
+    },
     "com.unity.services.wire": {
       "version": "1.4.0",
       "depth": 1,

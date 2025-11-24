@@ -1,104 +1,175 @@
 using System;
+using Core.Debugging;
 using Newtonsoft.Json;
 using Unity.Services.CloudCode;
 using Unity.Services.CloudCode.GeneratedBindings;
 using Unity.Services.Economy;
 using UnityEngine;
 
-public class VirtualStoreManager : MonoBehaviour
+/// <summary>
+/// Manages virtual purchases by interfacing with Unity Economy Service and Cloud Code.
+/// Handles validation of funds and execution of purchase transactions.
+/// </summary>
+public class VirtualStoreManager : DebuggableMonoBehaviour
 {
-    [SerializeField] PlayerEconomyManager m_PlayerEconomyManager;
-    [Header("Purchase IDs")]
-    [SerializeField] private string m_HealthPotionPurchaseId = "HEALTH_POTION_VIRTUAL_PURCHASE";
+    [Header("Dependencies")]
+    [Tooltip("Reference to the Economy Manager to check balance and update local data.")]
+    [SerializeField] private PlayerEconomyManager playerEconomyManager;
 
-    private int m_CurrentPotionCost;
-    private const int k_DefaultPotionPurchaseCost = 20;
-    private StoreServiceBindings m_Bindings;
-    private void OnEnable()
+    [Header("Purchase Configuration")]
+    [Tooltip("The ID of the Virtual Purchase as defined in the Unity Dashboard.")]
+    [SerializeField] private string healthPotionPurchaseId = "HEALTH_POTION_VIRTUAL_PURCHASE";
+
+    // Internal state for costs
+    private int _currentPotionCost;
+    private const int DefaultPotionPurchaseCost = 20;
+
+    // Cloud Code Bindings
+    private StoreServiceBindings _bindings;
+
+    protected override void Awake()
     {
-        m_PlayerEconomyManager.EconomyConfigSynced += InitializeVirtualStore;
+        base.Awake();
+
+        if (playerEconomyManager == null)
+        {
+            LogError("CRITICAL: PlayerEconomyManager reference is missing in VirtualStoreManager.");
+        }
     }
+
     private void Start()
     {
-        m_Bindings = new StoreServiceBindings(CloudCodeService.Instance);
-        m_CurrentPotionCost = k_DefaultPotionPurchaseCost;
+        _bindings = new StoreServiceBindings(CloudCodeService.Instance);
+        _currentPotionCost = DefaultPotionPurchaseCost;
     }
 
+    private void OnEnable()
+    {
+        if (playerEconomyManager != null)
+        {
+            playerEconomyManager.EconomyConfigSynced += InitializeVirtualStore;
+        }
+    }
+
+    /// <summary>
+    /// Initializes the store data once the economy configuration has been synced from the server.
+    /// </summary>
     private void InitializeVirtualStore()
     {
         try
         {
+            Log("Initializing Virtual Store...");
             LogVirtualPurchasesFromConfig();
             InitializePurchaseCosts();
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
-            Debug.LogError($"Falha em sincronizar a configuracao de economia:  {ex.Message}");
+            LogError($"Failed to sync economy configuration: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Logs all available virtual purchases defined in the Economy Configuration for debugging.
+    /// </summary>
     private void LogVirtualPurchasesFromConfig()
     {
         var virtualPurchases = EconomyService.Instance.Configuration.GetVirtualPurchases();
-        string virtualPurchasesJson = JsonConvert.SerializeObject(virtualPurchases,  Formatting.Indented);
-        Debug.Log($"Compra virtual da configuracao de economia: {virtualPurchasesJson}");
+        var virtualPurchasesJson = JsonConvert.SerializeObject(virtualPurchases, Formatting.Indented);
+
+        Log($"Loaded Virtual Purchases Config: {virtualPurchasesJson}");
     }
-    
+
+    /// <summary>
+    /// Looks up the specific cost for the Health Potion from the Economy Configuration.
+    /// Falls back to default values if the configuration is missing or incorrect.
+    /// </summary>
     private void InitializePurchaseCosts()
     {
         try
         {
-            var purchaseDefinition = EconomyService.Instance.Configuration.GetVirtualPurchase(m_HealthPotionPurchaseId);
+            var purchaseDefinition = EconomyService.Instance.Configuration.GetVirtualPurchase(healthPotionPurchaseId);
+
             if (purchaseDefinition == null)
             {
-                Debug.LogWarning($"Compra virtual {m_HealthPotionPurchaseId} nao encontrada. Usando custo padrao");
+                LogWarning($"Virtual Purchase ID '{healthPotionPurchaseId}' not found in config. Using default cost: {DefaultPotionPurchaseCost}");
                 return;
             }
+
             foreach (var cost in purchaseDefinition.Costs)
             {
-                if (cost.Item.GetReferencedConfigurationItem().Id == PlayerEconomyManager.k_GoldCurrencyKey)
+                // Check if the cost is in Gold (using the constant from PlayerEconomyManager)
+                if (cost.Item.GetReferencedConfigurationItem().Id == PlayerEconomyManager.GoldCurrencyKey)
                 {
-                    m_CurrentPotionCost = cost.Amount;
-                    Debug.Log($"Custo de Pocao de Cura definido para {m_CurrentPotionCost} de gold");
+                    _currentPotionCost = cost.Amount;
+                    Log($"Health Potion cost updated from config: {_currentPotionCost} Gold");
                     return;
                 }
             }
-            Debug.LogWarning($"Nao foi encontrado custo em gold para a compra {m_HealthPotionPurchaseId}. Usando valores padrao");
+
+            LogWarning($"No Gold cost found for purchase '{healthPotionPurchaseId}'. Using default cost.");
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Erro ao inicializar os custos de compra: {ex.Message}. Usando valores padrao");
+            LogError($"Error initializing purchase costs: {ex.Message}. Using default values.");
         }
-        
     }
 
+    /// <summary>
+    /// Attempts to purchase a health potion via Cloud Code.
+    /// Checks local balance first to avoid unnecessary network calls.
+    /// </summary>
     public async void PurchaseHealthPotion()
     {
-        if (!CanAffordVirtualPurchase(m_CurrentPotionCost))
-        {
-            Debug.LogWarning($"Sem Gold suficiente! Precisa de {m_CurrentPotionCost}, tem {m_PlayerEconomyManager.Gold}.");
-            return;
-        }
         try
         {
-            var economyData = await m_Bindings.VirtualPurchaseHealthPotion();
-            Debug.Log($"Comprado com Sucesso - Produto: {m_HealthPotionPurchaseId}");
-            m_PlayerEconomyManager.HandleEconomyUpdate(economyData);
+            // Pre-validation: Check if player can afford it locally
+            if (!CanAffordVirtualPurchase(_currentPotionCost))
+            {
+                LogWarning($"Insufficient Funds! Required: {_currentPotionCost}, Available: {playerEconomyManager.Gold}.");
+                return;
+            }
+
+            try
+            {
+                Log($"Attempting to purchase '{healthPotionPurchaseId}' via Cloud Code...");
+
+                // Execute purchase on the server
+                var economyData = await _bindings.VirtualPurchaseHealthPotion();
+
+                Log("Purchase Successful!");
+
+                // Update local economy with the result from the server
+                playerEconomyManager.HandleEconomyUpdate(economyData);
+            }
+            catch (CloudCodeException ex)
+            {
+                LogError($"Cloud Code Purchase Failed: {ex.Message} (Code: {ex.ErrorCode})");
+            }
         }
-        catch (CloudCodeException ex)
+        catch (Exception e)
         {
-            Debug.LogException(ex);
+            LogError($"Unexpected error during purchase: {e.Message}");
         }
     }
+
+    /// <summary>
+    /// Helper to check if the player has enough gold.
+    /// </summary>
+    /// <param name="cost">The amount of gold required.</param>
+    /// <returns>True if balance is sufficient, otherwise false.</returns>
     private bool CanAffordVirtualPurchase(int cost)
     {
-        var gold = m_PlayerEconomyManager.Gold;
+        if (playerEconomyManager == null) return false;
+
+        var gold = playerEconomyManager.Gold;
         return gold >= cost;
     }
 
     private void OnDisable()
     {
-        m_PlayerEconomyManager.EconomyConfigSynced -= InitializeVirtualStore;
+        if (playerEconomyManager != null)
+        {
+            playerEconomyManager.EconomyConfigSynced -= InitializeVirtualStore;
+        }
     }
-
-
 }
