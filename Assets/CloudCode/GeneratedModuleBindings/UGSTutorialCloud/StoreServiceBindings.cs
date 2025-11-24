@@ -22,5 +22,19 @@ namespace Unity.Services.CloudCode.GeneratedBindings
                 {
                 });
         }
+
+        public async Task<UGSTutorialCloud.PlayerEconomyData> ProcessRealMoneyPurchase(string productId, string receipt, double localPrice, string currencyCode)
+        {
+            return await k_Service.CallModuleEndpointAsync<UGSTutorialCloud.PlayerEconomyData>(
+                "UGSTutorialCloud",
+                "ProcessRealMoneyPurchase",
+                new Dictionary<string, object>()
+                {
+                    {"productId", productId},
+                    {"receipt", receipt},
+                    {"localPrice", localPrice},
+                    {"currencyCode", currencyCode},
+                });
+        }
     }
 }

@@ -1,13 +1,16 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 using Unity.Services.CloudCode.Apis;
 using Unity.Services.CloudCode.Core;
 using Unity.Services.CloudCode.Shared;
 using Unity.Services.Economy.Model;
+
 namespace UGSTutorialCloud;
 
 public class PlayerEconomyService
@@ -23,15 +26,46 @@ public class PlayerEconomyService
         m_Logger = logger;
     }
 
-    public async Task<int> GetPlayerGold(IExecutionContext context, IGameApiClient gameApiClient)
+    #region Cloud Code Functions
+
+    [CloudCodeFunction("GetPlayerEconomyData")]
+    public async Task<PlayerEconomyData> GetPlayerEconomyData(IExecutionContext context, IGameApiClient gameApiClient)
     {
-        return await GetCurrencyAmount(context, gameApiClient, k_GoldCurrencyKey);
+        try
+        {
+            await CleanUpNullOrZeroAmountItems(context, gameApiClient, k_HealthPotionKey);
+
+            // Create economy data object
+            var economyData = new PlayerEconomyData();
+
+            // Get player gold and add to economy data
+            int goldAmount = await GetPlayerGold(context, gameApiClient);
+            economyData.Currencies[k_GoldCurrencyKey] = goldAmount;
+
+            // Add any other currencies here...
+
+            // Get player inventory and add to economy data
+            economyData.ItemInventory = await GetPlayerInventoryItemAmountMap(context, gameApiClient);
+
+            return economyData;
+        }
+        catch (Exception ex)
+        {
+            m_Logger.LogError(ex, "Failed to get economy data: {PlayerId}", context.PlayerId);
+            throw new Exception($"Failed to get economy: {ex.Message}", ex);
+        }
     }
-    public async Task<int> GetHealthPotionAmount(IExecutionContext context, IGameApiClient gameApiClient)
+
+    #endregion
+
+    #region Initialization /  Setup
+
+    public async Task<PlayerEconomyData> InitializeNewPlayerEconomy(IExecutionContext context, IGameApiClient gameApiClient)
     {
-        return await GetInventoryItemAmount(context, gameApiClient, k_HealthPotionKey);
+        await InitializeInventory(context, gameApiClient);
+        return await GetPlayerEconomyData(context, gameApiClient);
     }
-    [CloudCodeFunction("InitializeInventory")]
+
     private async Task InitializeInventory(IExecutionContext context, IGameApiClient gameApiClient)
     {
         var startingItems = new Dictionary<string, int>
@@ -52,36 +86,254 @@ public class PlayerEconomyService
             }
         }
     }
-    
-    [CloudCodeFunction("GetPlayerEconomyData")]
-    public async Task<PlayerEconomyData> GetPlayerEconomyData(IExecutionContext context, IGameApiClient gameApiClient)
+
+    #endregion
+
+    public async Task AddCurrency(IExecutionContext context, IGameApiClient gameApiClient, string currencyId, int amount)
+    {
+        CurrencyModifyBalanceRequest request = new CurrencyModifyBalanceRequest(currencyId, amount);
+
+        // Example implementation using Economy API
+        await gameApiClient.EconomyCurrencies.IncrementPlayerCurrencyBalanceAsync(
+            context,
+            context.AccessToken,
+            context.ProjectId,
+            context.PlayerId!,
+            currencyId,
+            request
+        );
+    }
+
+    public async Task AddOrUpdateInventoryItemAmount(IExecutionContext context, IGameApiClient gameApiClient, string itemKey, int amountToAdd,
+        Dictionary<string, object>? customData = null) // Optional parameter for other custom data
+    {
+        var inventoryItems = await GetPlayerInventory(context, gameApiClient, inventoryItemIds: new string[] { itemKey });
+        InventoryResponse? existingItem = inventoryItems.FirstOrDefault(item => !string.IsNullOrEmpty(item.PlayersInventoryItemId));
+        bool itemExistsInInventory = existingItem != null;
+
+        // Determine amount to use
+        int totalAmount = amountToAdd;
+        if (itemExistsInInventory)
+        {
+            TryParseInventoryItemAmount(existingItem!, out int currentAmount); // Defaults to 0 if parsing fails
+
+            totalAmount = currentAmount + amountToAdd;
+        }
+
+        // Prepare instance data with amount
+        var instanceData = new Dictionary<string, object>
+        {
+            { "amount", totalAmount }
+        };
+
+        // Add any custom data provided
+        if (customData != null)
+        {
+            foreach (var kvp in customData)
+            {
+                instanceData[kvp.Key] = kvp.Value;
+            }
+        }
+
+        if (itemExistsInInventory)
+        {
+            // Update existing item with new data. Note: This approach replaces ALL instance data. You might want to retrieve and merge with existing data.
+            var updateRequest = new InventoryRequestUpdate(instanceData: instanceData);
+            await gameApiClient.EconomyInventory.UpdateInventoryItemAsync(context, context.AccessToken, context.ProjectId, context.PlayerId!,
+                existingItem!.PlayersInventoryItemId!, updateRequest);
+        }
+        else
+        {
+            // Create new item with data
+            await AddNewInventoryItem(context, gameApiClient, itemKey, instanceData);
+        }
+    }
+
+    /// <summary>
+    /// Deletes any inventory items of itemKey that have null custom data or an amount property <= 0
+    /// </summary>
+    public async Task CleanUpNullOrZeroAmountItems(IExecutionContext context, IGameApiClient gameApiClient, string itemKey)
     {
         try
         {
-            // Cria um objeto de informacao de economia
-            var economyData = new PlayerEconomyData();
-            // Pega o ouro do jogador e adiciona a informacao de economia
-            int goldAmount = await GetPlayerGold(context, gameApiClient);
-            economyData.Currencies[k_GoldCurrencyKey] = goldAmount;
-            // Adicione qualquer outra moeda aqui...
-            
-            // Pega o inventario do jogador e adiciona a informacao de economia
-            economyData.ItemInventory = await GetPlayerInventoryItemAmountMap(context, gameApiClient);
-            return economyData;
+            var items = await GetPlayerInventory(context, gameApiClient, inventoryItemIds: new string[] { itemKey });
+
+            var itemsToDelete = new List<string>();
+
+            foreach (var item in items)
+            {
+                if (string.IsNullOrEmpty(item.PlayersInventoryItemId)) continue;
+
+                // Check for null instance data
+                if (item.InstanceData == null)
+                {
+                    itemsToDelete.Add(item.PlayersInventoryItemId);
+                    m_Logger.LogInformation($"Found {itemKey} with null instance data: {item.PlayersInventoryItemId}");
+                    continue;
+                }
+
+                if (!TryParseInventoryItemAmount(item, out int amount))
+                {
+                    continue;
+                }
+
+                if (amount <= 0)
+                {
+                    itemsToDelete.Add(item.PlayersInventoryItemId);
+                }
+            }
+
+            foreach (var itemId in itemsToDelete)
+            {
+                await DeleteInventoryItem(context, gameApiClient, itemId);
+                m_Logger.LogInformation($"Deleted zero-amount {itemId}");
+            }
         }
         catch (Exception ex)
         {
-            m_Logger.LogError(ex, "Falha em sincronizar a informacao de economia do jogador: {PlayerId}", context.PlayerId);
-            throw new Exception($"Falha em sincronizar a economia: {ex.Message}", ex);
+            m_Logger.LogError(ex, $"Failed to clean up zero-amount {itemKey} for player {context.PlayerId}");
+            // Don't fail purchase — just log
         }
     }
 
-    public async Task<PlayerEconomyData> InitializeNewPlayerEconomy(IExecutionContext context, IGameApiClient gameApiClient)
+    /// <summary>
+    /// Updates an item's amount
+    /// </summary>
+    private async Task UpdateItemAmount(IExecutionContext context, IGameApiClient gameApiClient, string itemId, int amount)
     {
-        await InitializeInventory(context, gameApiClient);
-        return await GetPlayerEconomyData(context, gameApiClient);
+        var instanceData = new Dictionary<string, object>
+        {
+            { "amount", amount }
+        };
+
+        var updateRequest = new InventoryRequestUpdate(instanceData: instanceData);
+
+        await gameApiClient.EconomyInventory.UpdateInventoryItemAsync(
+            context,
+            context.AccessToken,
+            context.ProjectId,
+            context.PlayerId ?? throw new InvalidOperationException("PlayerId is null"),
+            itemId,
+            updateRequest
+        );
+
+        m_Logger.LogInformation($"Updated potion {itemId} with amount: {amount}");
     }
 
+    /// <summary>
+    /// Deletes a single inventory item
+    /// </summary>
+    public async Task DeleteInventoryItem(IExecutionContext context, IGameApiClient gameApiClient, string inventoryItemId)
+    {
+        await gameApiClient.EconomyInventory.DeleteInventoryItemAsync(
+            context,
+            context.AccessToken,
+            context.ProjectId,
+            context.PlayerId ?? throw new InvalidOperationException("PlayerId is null"),
+            inventoryItemId
+        );
+    }
+
+    #region Public Helper Methods
+
+    /// <summary>
+    /// Grants a single reward resource to the player based on its type.
+    /// </summary>
+    /// <param name="resourceType">Type of the resource (CURRENCY or INVENTORY_ITEM).</param>
+    /// <param name="resourceId">ID of the resource to grant.</param>
+    /// <param name="amount">Amount of the resource to grant.</param>
+    public async Task GrantResourceReward(
+        IExecutionContext context,
+        IGameApiClient gameApiClient,
+        string resourceType,
+        string resourceId,
+        int amount)
+    {
+        switch (resourceType)
+        {
+            case "CURRENCY":
+                await AddCurrency(context, gameApiClient, resourceId, amount);
+                m_Logger.LogInformation($"Added currency: {resourceId}, Amount: {amount}");
+                break;
+
+            case "INVENTORY_ITEM":
+                await AddOrUpdateInventoryItemAmount(context, gameApiClient, resourceId, amount);
+                m_Logger.LogInformation($"Added inventory item: {resourceId}, Amount: {amount}");
+                break;
+
+            default:
+                m_Logger.LogWarning($"Unknown resource type for reward: {resourceType}");
+                break;
+        }
+    }
+
+    public async Task AddNewInventoryItem(
+        IExecutionContext context,
+        IGameApiClient gameApiClient,
+        string itemId,
+        int amount)
+    {
+        var instanceData = new Dictionary<string, object>
+        {
+            { "amount", amount }
+        };
+
+        await AddNewInventoryItem(context, gameApiClient, itemId, instanceData);
+    }
+
+    public async Task AddNewInventoryItem(
+        IExecutionContext context,
+        IGameApiClient gameApiClient,
+        string itemId,
+        Dictionary<string, object> instanceData)
+    {
+
+        var inventoryRequest = new AddInventoryRequest(itemId, instanceData: instanceData);
+
+        try
+        {
+            await gameApiClient.EconomyInventory.AddInventoryItemAsync(
+                context,
+                context.AccessToken,
+                context.ProjectId,
+                context.PlayerId ?? throw new InvalidOperationException("PlayerId is null"),
+                inventoryRequest
+            );
+        }
+        catch (ApiException ex)
+        {
+            m_Logger.LogError(
+                $"Failed to add inventory item '{itemId}' for player '{context.PlayerId}'. Error: {ex.Message}");
+            throw new Exception($"Failed to add inventory item '{itemId}': {ex.Message}", ex);
+        }
+    }
+
+    #endregion
+
+    #region Convienence Utility Functions
+
+    private async Task<int> GetPlayerGold(IExecutionContext context, IGameApiClient gameApiClient)
+    {
+        return await GetCurrencyAmount(context, gameApiClient, k_GoldCurrencyKey);
+    }
+
+    private async Task<int> GetHealthPotionAmount(IExecutionContext context, IGameApiClient gameApiClient)
+    {
+        return await GetInventoryItemAmount(context, gameApiClient, k_HealthPotionKey);
+    }
+
+    #endregion
+
+    #region Internal Data Access / Helpers
+
+    /// <summary>
+    /// Gets the player's inventory items.
+    /// </summary>
+    /// <param name="context">The execution context.</param>
+    /// <param name="gameApiClient">The game API client.</param>
+    /// <param name="limit">Maximum number of items to return (defaults to API default).</param>
+    /// <param name="inventoryItemIds">Optional filter by inventory item ID.</param>
+    /// <returns>A list of inventory response objects.</returns>
     private async Task<List<InventoryResponse>> GetPlayerInventory(
         IExecutionContext context,
         IGameApiClient gameApiClient,
@@ -93,58 +345,50 @@ public class PlayerEconomyService
             List<string>? ids = inventoryItemIds?.Length > 0
                 ? inventoryItemIds.ToList()
                 : null;
-            
-            // Chama a API para pegar o inventario do jogador
+
+            // Call the API to get player inventory
             var playerInventory = await gameApiClient.EconomyInventory.GetPlayerInventoryAsync(
                 context,
                 context.AccessToken,
                 context.ProjectId,
                 context.PlayerId!,
                 inventoryItemIds: ids,
-                limit: limit);
+                limit: limit
+            );
 
             return playerInventory.Data.Results;
         }
-        catch (Exception ex)
+
+        catch (ApiException ex)
         {
-            m_Logger.LogError($"Falha em pegar o inventario do jogador '{context.PlayerId}'. Erro: {ex.Message}'");
+            m_Logger.LogError($"Failed to get inventory for player '{context.PlayerId}'. Error: {ex.Message}");
             throw new Exception($"Failed to get inventory: {ex.Message}", ex);
         }
     }
 
-    private async Task<Dictionary<string, int>> GetPlayerInventoryItemAmountMap(IExecutionContext context, IGameApiClient gameApiClient, params string[]? inventoryItemIds)
+
+    /// <summary>
+    /// Gets the player's inventory items as a simplified dictionary of itemId to amount.
+    /// </summary>
+    /// <param name="context">The execution context.</param>
+    /// <param name="gameApiClient">The game API client.</param>
+    /// <param name="inventoryItemIds">Optional filter by inventory item ID.</param>
+    /// <returns>A dictionary mapping item IDs to amounts.</returns>
+    private async Task<Dictionary<string, int>> GetPlayerInventoryItemAmountMap(
+        IExecutionContext context,
+        IGameApiClient gameApiClient,
+        params string[]? inventoryItemIds)
     {
         var items = await GetPlayerInventory(context, gameApiClient, inventoryItemIds: inventoryItemIds);
+
         return items
             .Where(item => !string.IsNullOrEmpty(item.InventoryItemId))
             .ToDictionary(
-                item => item.InventoryItemId!, 
+                item => item.InventoryItemId!,
                 item => GetInventoryItemCustomData<int?>(item, "amount") ?? 1
-                );
+            );
     }
 
-    private T? GetInventoryItemCustomData<T>(InventoryResponse item, string key)
-    {
-        if (item?.InstanceData == null) return default;
-        try
-        {
-            // Converte para JObject se ja nao tiver feito
-            var jObject = item.InstanceData as Newtonsoft.Json.Linq.JObject
-                ?? Newtonsoft.Json.Linq.JObject.Parse(item.InstanceData?.ToString() ?? "{}");
-            // Pega o valor usando uma sintaxe de indexacao
-            var token = jObject[key];
-            if (token != null)
-            {
-                // Converte para o tipo requisitado
-                return token.ToObject<T>();
-            }
-        }
-        catch (Exception ex)
-        {
-            m_Logger.LogWarning($"Falha em pegar {key} do item {item.InventoryItemId}: {ex.Message}");
-        }
-        return default;
-    }
     private async Task<int> GetCurrencyAmount(IExecutionContext context, IGameApiClient gameApiClient, string key)
     {
         try
@@ -154,7 +398,7 @@ public class PlayerEconomyService
                 context.AccessToken,
                 context.ProjectId,
                 context.PlayerId!
-            );
+                );
 
             // Find the currency with the matching key
             CurrencyBalanceResponse? targetCurrency = 
@@ -174,6 +418,7 @@ public class PlayerEconomyService
             throw new Exception($"Failed to get currency '{key}' for player '{context.PlayerId}'. Error: {ex.Message}");
         }
     }
+
     private async Task<int> GetInventoryItemAmount(IExecutionContext context, IGameApiClient gameApiClient, string key)
     {
         try
@@ -184,7 +429,7 @@ public class PlayerEconomyService
                 context.ProjectId,
                 context.PlayerId!,
                 inventoryItemIds: new List<string> { key }
-            );
+                );
 
             InventoryResponse? item = inventoryResponse.Data.Results.FirstOrDefault();
 
@@ -246,121 +491,79 @@ public class PlayerEconomyService
             return false;
         }
     }
-    public async Task AddNewInventoryItem(
-        IExecutionContext context,
-        IGameApiClient gameApiClient,
-        string itemId,
-        Dictionary<string, object> instanceData)
-    {
 
-        var inventoryRequest = new AddInventoryRequest(itemId, instanceData: instanceData);
+    /// <summary>
+    /// Extracts a single field from an inventory item's instance data.
+    /// </summary>
+    /// <typeparam name="T">The type to convert the field value to</typeparam>
+    /// <param name="item">The inventory item containing instance data</param>
+    /// <param name="key">The field key to extract</param>
+    /// <returns>The extracted field value, or default if not found or on error</returns>
+    private T? GetInventoryItemCustomData<T>(InventoryResponse item, string key)
+    {
+        if (item?.InstanceData == null) return default;
 
         try
         {
-            await gameApiClient.EconomyInventory.AddInventoryItemAsync(
-                context,
-                context.AccessToken,
-                context.ProjectId,
-                context.PlayerId ?? throw new InvalidOperationException("PlayerId is null"),
-                inventoryRequest
-            );
-        }
-        catch (ApiException ex)
-        {
-            m_Logger.LogError(
-                $"Failed to add inventory item '{itemId}' for player '{context.PlayerId}'. Error: {ex.Message}");
-            throw new Exception($"Failed to add inventory item '{itemId}': {ex.Message}", ex);
-        }
-    }
-    public async Task AddNewInventoryItem(
-        IExecutionContext context,
-        IGameApiClient gameApiClient,
-        string itemId,
-        int amount)
-    {
-        var instanceData = new Dictionary<string, object>
-        {
-            { "amount", amount }
-        };
+            // Convert to JObject if it isn't already
+            var jObject = item.InstanceData as Newtonsoft.Json.Linq.JObject
+                ?? Newtonsoft.Json.Linq.JObject.Parse(item.InstanceData?.ToString() ?? "{}");
 
-        await AddNewInventoryItem(context, gameApiClient, itemId, instanceData);
-    }
-
-
-    public async Task CleanUpNullOrZeroAmountItems(IExecutionContext context, IGameApiClient gameApiClient, string itemKey)
-    {
-        try
-        {
-            var items = await GetPlayerInventory(context, gameApiClient, inventoryItemIds: new string[] {itemKey});
-            var itemsToDelete = new List<string>();
-            foreach (var item in items)
+            // Get value using indexer syntax
+            var token = jObject[key];
+            if (token != null)
             {
-                if (string.IsNullOrEmpty(item.PlayersInventoryItemId)) continue;
-                if (item.InstanceData == null)
-                {
-                    itemsToDelete.Add(item.PlayersInventoryItemId);
-                    m_Logger.LogInformation($"Found {itemKey} with null instance data: {item.PlayersInventoryItemId}");
-                    continue;
-                }
-                if (!TryParseInventoryItemAmount(item, out int amount))
-                {
-                    continue;
-                }
-                if (amount <= 0)
-                {
-                    itemsToDelete.Add(item.PlayersInventoryItemId);
-                }
-            }
-            foreach (var itemId in itemsToDelete)
-            {
-                await DeleteInventoryItem(context, gameApiClient, itemId);
-                m_Logger.LogInformation($"Deletado quantidade-zero {itemId}");
+                // Convert to requested type
+                return token.ToObject<T>();
             }
         }
         catch (Exception ex)
         {
-            m_Logger.LogError(ex, $"Falha em limpar quantidade-zero {itemKey} para o jogador '{context.PlayerId}'");
-        }
-    }
-    private async Task DeleteInventoryItem(IExecutionContext context, IGameApiClient gameApiClient, string inventoryItemId)
-    {
-        await gameApiClient.EconomyInventory.DeleteInventoryItemAsync(
-            context,
-            context.AccessToken,
-            context.ProjectId,
-            context.PlayerId ?? throw new InvalidOperationException("PlayerId is null"),
-            inventoryItemId);
-    }
-    public async Task AddOrUpdateInventoryItemAmount(IExecutionContext context, IGameApiClient gameApiClient, string itemKey, int amountToAdd, Dictionary<string, object>? customData = null)
-    {
-        var inventoryItems = await GetPlayerInventory(context, gameApiClient, inventoryItemIds: new string[] { itemKey });
-        InventoryResponse? existingItem = inventoryItems.FirstOrDefault(item => !string.IsNullOrEmpty(item.PlayersInventoryItemId));
-        bool itemExistsInInventory = existingItem != null;
-        int totalAmount = amountToAdd;
-        if (itemExistsInInventory)
-        {
-            TryParseInventoryItemAmount(existingItem!, out int currentAmount);
-            totalAmount = currentAmount + amountToAdd;
+            m_Logger.LogWarning($"Failed to get '{key}' from item '{item.InventoryItemId}': {ex.Message}");
         }
 
-        var instanceData = new Dictionary<string, object> {
-            { "amount", totalAmount }
-        };
-        if (customData != null)
+        return default;
+    }
+
+    private Dictionary<string, object> GetAllCustomDataForInventoryItem(InventoryResponse item)
+    {
+        if (item?.InstanceData == null) return new Dictionary<string, object>();
+
+        try
         {
-            foreach (var kvp in customData)
-            {
-                instanceData[kvp.Key] = kvp.Value;
-            }
+            var jObject = item.InstanceData as Newtonsoft.Json.Linq.JObject
+                ?? Newtonsoft.Json.Linq.JObject.Parse(item.InstanceData?.ToString() ?? "{}");
+
+            // Convert JObject to Dictionary
+            return jObject.ToObject<Dictionary<string, object>>() ?? new Dictionary<string, object>();
         }
-        if (itemExistsInInventory)
+        catch (Exception ex)
         {
-            var updateRequest = new InventoryRequestUpdate(instanceData: instanceData);
-            await gameApiClient.EconomyInventory.UpdateInventoryItemAsync(context, context.AccessToken, context.ProjectId, context.PlayerId!, existingItem!.PlayersInventoryItemId!, updateRequest);
-        }
-        else
-        {
-            await AddNewInventoryItem(context, gameApiClient, itemKey, instanceData);
+            m_Logger.LogWarning($"Failed to get instance data from item '{item.InventoryItemId}': {ex.Message}");
+            return new Dictionary<string, object>();
         }
     }
+
+    // Helper method to determine the type of a resource from its ID
+    public string GetResourceType(List<PlayerConfigurationResponseResultsInner> results, string resourceId)
+    {
+        foreach (var result in results)
+        {
+            // Check the actual instance type directly
+            switch (result.ActualInstance)
+            {
+                case CurrencyResource currency when currency.Id == resourceId:
+                    return "CURRENCY";
+                case InventoryItemResource item when item.Id == resourceId:
+                    return "INVENTORY_ITEM";
+                case RealMoneyPurchaseResource purchase when purchase.Id == resourceId:
+                    return "REAL_MONEY_PURCHASE";
+                case VirtualPurchaseResource virtualPurchase when virtualPurchase.Id == resourceId:
+                    return "VIRTUAL_PURCHASE";
+            }
+        }
+        return "UNKNOWN";
+    }
+
+    #endregion
 }

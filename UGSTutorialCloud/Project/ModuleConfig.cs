@@ -9,8 +9,8 @@ public class ModuleConfig : ICloudCodeSetup
     public void Setup(ICloudCodeConfig config)
     {
         config.Dependencies.AddSingleton(GameApiClient.Create());
+
         config.Dependencies.AddSingleton<PlayerEconomyService>();
         config.Dependencies.AddSingleton<PlayerDataService>();
-        config.Dependencies.AddSingleton<StoreService>();
     }
 }
